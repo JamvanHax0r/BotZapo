@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+<title>JH Snake — Fiony Garden</title>
+<style>
+:root{--bg:#05070d;--border:rgba(255,255,255,.09);--accent:#f0c75e;--accent2:#8b5cf6;--danger:#fb7185}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;min-height:100%;overflow-x:hidden}
+body{background:var(--bg);color:#eef1f8;font-family:'Segoe UI',system-ui,Arial,sans-serif;min-height:100vh;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none;touch-action:manipulation}
+#app{width:100%;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px 12px}
+.card{position:relative;width:100%;max-width:480px;background:linear-gradient(165deg,rgba(255,255,255,.075),rgba(255,255,255,.025) 55%,rgba(240,199,94,.05));backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border:1px solid var(--border);border-radius:22px;overflow:hidden;box-shadow:0 30px 60px -25px rgba(0,0,0,.65)}
+.head{padding:16px 18px 12px;display:flex;justify-content:space-between;align-items:center;background:linear-gradient(90deg,rgba(139,92,246,.12),rgba(240,199,94,.10));border-bottom:1px solid var(--border)}
+.brand{font-size:10px;font-weight:700;letter-spacing:3px;background:linear-gradient(90deg,#f0c75e,#a78bfa,#fb7185,#f0c75e);background-size:300% 100%;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;animation:shine 6s linear infinite}
+.title{margin-top:2px;font-size:20px;font-weight:800;color:#fff;text-shadow:0 2px 14px rgba(139,92,246,.5)}
+.scorebox{text-align:right}
+#hud{font-size:12px;font-weight:700;color:var(--accent)}
+#best{margin-top:2px;font-size:10px;color:rgba(255,255,255,.45);letter-spacing:1px}
+.stage{padding:14px 14px 6px}
+.canvas-wrap{position:relative;border-radius:14px;overflow:hidden}
+canvas{width:100%;display:block;background:radial-gradient(120% 90% at 50% 10%,rgba(139,92,246,.10),rgba(255,255,255,.02) 60%);border:1px solid rgba(255,255,255,.12);border-radius:14px}
+#status{text-align:center;margin:10px 0 4px;font-size:11px;letter-spacing:2px;color:rgba(255,255,255,.5);text-transform:uppercase}
+.dpad{display:grid;grid-template-columns:repeat(3,58px);grid-template-rows:repeat(2,42px);gap:6px;justify-content:center;margin:8px auto 4px}
+.dpad button{border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.06);border-radius:10px;color:#eee;font-size:15px}
+.dpad button:active{background:rgba(240,199,94,.25)}
+.dpad button:nth-child(1){grid-column:2}
+.dpad button:nth-child(2){grid-column:1;grid-row:2}
+.dpad button:nth-child(3){grid-column:3;grid-row:2}
+.dpad button:nth-child(4){grid-column:2;grid-row:2}
+.foot{padding:12px 18px 16px;border-top:1px solid var(--border);text-align:center;display:flex;flex-direction:column;gap:4px;background:linear-gradient(180deg,rgba(0,0,0,.10),rgba(0,0,0,.28))}
+.made,.powered{font-size:11px;color:rgba(255,255,255,.66)}
+.heart{display:inline-block;color:var(--danger);animation:beat 1.1s ease-in-out infinite}
+.jh{font-weight:700;background:linear-gradient(90deg,#f0c75e,#fb7185,#a78bfa,#f0c75e);background-size:300% 100%;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;animation:shine 5s linear infinite}
+.fiony{font-weight:700;background:linear-gradient(90deg,#a78bfa,#f472b6,#67e8f9,#a78bfa);background-size:300% 100%;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;animation:shine 4.5s linear infinite}
+.copy{font-size:9.5px;color:rgba(255,255,255,.34);letter-spacing:.8px;margin-top:3px}
+.overlay{position:absolute;inset:0;z-index:10;display:none;flex-direction:column;background:rgba(5,7,13,.93);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);padding:16px 14px;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+.overlay.show{display:flex}
+.ov-body{margin:auto;display:flex;flex-direction:column;align-items:center;gap:9px;width:100%;padding:8px 0}
+.ov-title{color:var(--accent);font-size:22px;font-weight:800;text-shadow:0 0 18px rgba(240,199,94,.35)}
+.ov-sub{color:rgba(255,255,255,.75);font-size:11px;text-align:center;letter-spacing:.3px}
+.btn{width:100%;max-width:260px;padding:12px 14px;border:none;border-radius:12px;background:linear-gradient(90deg,rgba(240,199,94,.9),rgba(139,92,246,.9));color:#05070d;font-weight:800;font-size:12px;letter-spacing:1px;cursor:pointer}
+.btn.ghost{background:rgba(255,255,255,.07);color:#eef1f8;border:1px solid rgba(255,255,255,.12)}
+.btn.small{width:auto;padding:7px 10px;font-size:10px;border-radius:9px}
+.item{width:100%;max-width:300px;display:flex;justify-content:space-between;align-items:center;gap:8px;padding:9px 10px;border:1px solid rgba(255,255,255,.08);border-radius:10px;background:rgba(255,255,255,.04)}
+.in{display:flex;gap:8px;align-items:center;text-align:left}
+.dot{width:14px;height:14px;border-radius:50%;flex:none}
+.ic{font-size:16px}
+.nm{font-size:12px;font-weight:700;color:#fff}
+.ds{font-size:9.5px;color:rgba(255,255,255,.5)}
+@keyframes shine{to{background-position:300% 0}}
+@keyframes beat{0%,100%{transform:scale(1)}30%{transform:scale(1.4)}55%{transform:scale(1)}75%{transform:scale(1.25)}}
+</style>
+</head>
+<body>
+<div id="app">
+<div class="card">
+<div class="head">
+<div><div class="brand">JH • SNAKE</div><div class="title">Fiony Garden</div></div>
+<div class="scorebox"><div id="hud">🪙 0</div><div id="best">BEST 0</div></div>
+</div>
+<div class="stage">
+<div class="canvas-wrap">
+<canvas id="game" width="320" height="320"></canvas>
+</div>
+<div id="status">Lv 1 • Score 0</div>
+<div class="dpad">
+<button data-d="U">▲</button>
+<button data-d="L">◀</button>
+<button data-d="R">▶</button>
+<button data-d="D">▼</button>
+</div>
+</div>
+<div class="foot" data-jh-fiony-anchor="1">
+<div class="made">Made with <span class="heart">♡</span> by <span class="jh" data-jh-credit="1">JamvanHax0r</span></div>
+<div class="powered">Powered by <span class="fiony" data-jh-credit="2">Fiony Bot</span></div>
+<div class="copy">© <span id="year"></span> — All Rights Reserved.</div>
+</div>
+<div class="overlay show" id="mMenu"><div class="ov-body">
+<div class="ov-title">🐍 JH SNAKE</div>
+<div class="ov-sub">Grow • Upgrade • Conquer the Garden</div>
+<button class="btn" data-go="play">▶ MAIN</button>
+<button class="btn ghost" data-go="shop">🛒 UPGRADES <span id="mCoins"></span></button>
+<button class="btn ghost" data-go="skins">🎨 SKINS</button>
+<button class="btn ghost" data-go="ach">🏆 ACHIEVEMENTS</button>
+</div></div>
+<div class="overlay" id="mShop"><div class="ov-body">
+<div class="ov-title">🛒 UPGRADES</div>
+<div id="shopList" style="width:100%;display:flex;flex-direction:column;align-items:center;gap:6px"></div>
+<button class="btn ghost" data-go="back">⬅ BACK</button>
+</div></div>
+<div class="overlay" id="mSkins"><div class="ov-body">
+<div class="ov-title">🎨 SKINS</div>
+<div id="skinList" style="width:100%;display:flex;flex-direction:column;align-items:center;gap:6px"></div>
+<button class="btn ghost" data-go="back">⬅ BACK</button>
+</div></div>
+<div class="overlay" id="mAch"><div class="ov-body">
+<div class="ov-title">🏆 ACHIEVEMENTS</div>
+<div id="achList" style="width:100%;display:flex;flex-direction:column;align-items:center;gap:6px"></div>
+<button class="btn ghost" data-go="back">⬅ BACK</button>
+</div></div>
+<div class="overlay" id="mOver"><div class="ov-body">
+<div class="ov-title">GAME OVER</div>
+<div class="ov-sub" id="ovStats"></div>
+<div class="ov-sub" id="ovAch"></div>
+<button class="btn" data-go="play">🔁 MAIN LAGI</button>
+<button class="btn ghost" data-go="menu">🏠 MENU</button>
+</div></div>
+</div>
+</div>
+<script>
+var c=document.getElementById('game'),x=c.getContext('2d');
+var hudEl=document.getElementById('hud'),bestEl=document.getElementById('best'),statusEl=document.getElementById('status');
+document.getElementById('year').textContent=new Date().getFullYear();
+var COLS=20,ROWS=20,CELL=16;
+function def(){return{coins:0,best:0,totalFood:0,totalCoins:0,bestLevel:1,bestLen:3,runs:0,up:{shield:0,slow:0,life:0},skins:['classic'],skin:'classic',ach:[]}}
+function load(){try{var v=localStorage.getItem('jh_snake_save');if(v){var o=JSON.parse(v);var d=def();o.up=o.up||{};for(var k in d)if(o[k]===undefined)o[k]=d[k];return o}return def()}catch(e){return def()}}
+var S=load();
+function save(){try{localStorage.setItem('jh_snake_save',JSON.stringify(S))}catch(e){}}
+var SKINS={classic:{n:'Garden Green',b:'#7ed957',h:'#c8ffa8',req:''},gold:{n:'JH Gold',b:'#f0c75e',h:'#ffe9a8',req:'Capai Level 5'},violet:{n:'Fiony Violet',b:'#8b5cf6',h:'#c4b5fd',req:'Capai Level 8'},rose:{n:'Rose Rush',b:'#fb7185',h:'#fecdd3',req:'Total 1000 koin'}};
+function skinOk(k){if(k==='classic')return true;if(k==='gold')return S.bestLevel>=5;if(k==='violet')return S.bestLevel>=8;if(k==='rose')return S.totalCoins>=1000}
+var UPS={shield:{i:'🛡',n:'Shield',d:'Perisai awal — tahan 1 tabrakan per lapis',max:3,c:function(l){return 150*(l+1)}},slow:{i:'🐌',n:'Slow Start',d:'Kecepatan awal lebih santai',max:3,c:function(l){return 100*(l+1)}},life:{i:'❤',n:'Extra Life',d:'Nyawa cadangan buat revive',max:2,c:function(l){return 300*(l+1)}}};
+var snake,dir,ndir,food,gold,rocks,score,foods,level,alive,inv,shield,lives,interval,acc=0,lastT=0,runCoins,playing=false,flashT=0,flashC='#fff';
+function rnd(n){return Math.floor(Math.random()*n)}
+function onSnake(p){for(var i=0;i<snake.length;i++)if(snake[i].x===p.x&&snake[i].y===p.y)return true;return false}
+function onRocks(p){for(var i=0;i<rocks.length;i++)if(rocks[i].x===p.x&&rocks[i].y===p.y)return true;return false}
+function bad(p){return onSnake(p)||onRocks(p)||(food&&p.x===food.x&&p.y===food.y)}
+function nearHead(p){var h=snake[0];return Math.abs(p.x-h.x)+Math.abs(p.y-h.y)<3}
+function placeFood(){var p;do{p={x:rnd(COLS),y:rnd(ROWS)}}while(bad(p));food=p;gold=(foods>0&&foods%5===0)?1:0}
+function reset(){snake=[{x:9,y:10},{x:8,y:10},{x:7,y:10}];dir={x:1,y:0};ndir={x:1,y:0};score=0;foods=0;level=1;alive=true;inv=0;shield=S.up.shield;lives=S.up.life;rocks=[];runCoins=0;interval=170-S.up.slow*15;acc=0;lastT=0;food=null;placeFood();updateHud()}
+function setDir(x,y){if(dir&&x===-dir.x&&y===-dir.y)return;ndir={x:x,y:y}}
+function flash(col){flashC=col;flashT=1}
+function step(){dir=ndir;var h={x:snake[0].x+dir.x,y:snake[0].y+dir.y};
+if(h.x<0||h.x>=COLS||h.y<0||h.y>=ROWS||onRocks(h)||hitSelf(h)){crash();return}
+snake.unshift(h);
+if(h.x===food.x&&h.y===food.y){var g=gold?3:1;score+=g;runCoins+=g;foods++;S.totalFood++;if(foods%5===0)levelUp();placeFood()}
+else snake.pop();
+if(snake.length>S.bestLen)S.bestLen=snake.length;
+updateHud()}
+function hitSelf(h){for(var i=0;i<snake.length-1;i++)if(snake[i].x===h.x&&snake[i].y===h.y)return true;return false}
+function crash(){if(inv>0)return;if(shield>0){shield--;inv=6;flash('#f0c75e');updateHud();return}if(lives>0){lives--;inv=6;flash('#fb7185');updateHud();return}gameOver()}
+function levelUp(){level++;if(level>S.bestLevel)S.bestLevel=level;interval=Math.max(70,interval-12);if(level>=3){for(var i=0;i<2;i++){var p;do{p={x:rnd(COLS),y:rnd(ROWS)}}while(bad(p)||nearHead(p));rocks.push(p)}}flash('#8b5cf6')}
+function gameOver(){alive=false;playing=false;S.runs++;var earned=runCoins+level*5;S.coins+=earned;S.totalCoins+=earned;if(score>S.best)S.best=score;var na=checkAch();save();
+document.getElementById('ovStats').textContent='Score '+score+' • Level '+level+' • +🪙 '+earned;
+document.getElementById('ovAch').textContent=na.length?('🏆 Unlocked: '+na.join(', ')):'';
+hideOv();show('mOver')}
+function checkAch(){var out=[];var A=[['first','First Bite',S.totalFood>=1],['len20','Growing Up',S.bestLen>=20],['lv5','Garden Keeper',S.bestLevel>=5],['rich','Coin Hoarder',S.totalCoins>=1000],['runs10','Regular',S.runs>=10]];for(var i=0;i<A.length;i++){if(A[i][2]&&S.ach.indexOf(A[i][0])<0){S.ach.push(A[i][0]);out.push(A[i][1])}}return out}
+function updateHud(){hudEl.textContent='🪙 '+S.coins+'  🛡 '+shield+'  ❤ '+lives;bestEl.textContent='BEST '+S.best;statusEl.textContent='Lv '+level+' • Score '+score}
+function draw(){x.clearRect(0,0,320,320);
+x.fillStyle='rgba(255,255,255,.03)';
+for(var gy=0;gy<ROWS;gy++)for(var gx=0;gx<COLS;gx++)if((gx+gy)%2===0)x.fillRect(gx*CELL,gy*CELL,CELL,CELL);
+for(var i=0;i<rocks.length;i++){var r=rocks[i];x.fillStyle='#475569';x.fillRect(r.x*CELL+2,r.y*CELL+2,CELL-4,CELL-4);x.fillStyle='#334155';x.fillRect(r.x*CELL+5,r.y*CELL+5,CELL-10,CELL-10)}
+if(food){x.fillStyle=gold?'#f0c75e':'#fb7185';x.beginPath();x.arc(food.x*CELL+8,food.y*CELL+9,6,0,7);x.fill();x.fillStyle='#7ed957';x.fillRect(food.x*CELL+7,food.y*CELL+1,3,4)}
+if(snake){var sk=SKINS[S.skin]||SKINS.classic;
+if(inv>0&&Math.floor(Date.now()/120)%2===0)x.globalAlpha=.35;
+for(var i=snake.length-1;i>=0;i--){var s=snake[i];x.fillStyle=i===0?sk.h:sk.b;x.fillRect(s.x*CELL+1,s.y*CELL+1,CELL-2,CELL-2)}
+x.globalAlpha=1;
+var h=snake[0];x.fillStyle='#05070d';
+x.fillRect(h.x*CELL+4+dir.x*3,h.y*CELL+5+dir.y*3,3,3);
+x.fillRect(h.x*CELL+9+dir.x*3,h.y*CELL+5+dir.y*3,3,3)}
+if(flashT>0){x.globalAlpha=flashT*.25;x.fillStyle=flashC;x.fillRect(0,0,320,320);x.globalAlpha=1;flashT-=.06}}
+function loop(t){requestAnimationFrame(loop);
+if(playing&&alive){if(!lastT)lastT=t;var dt=Math.min(t-lastT,100);lastT=t;acc+=dt;
+while(acc>interval){acc-=interval;if(inv>0)inv--;step();if(!alive)break}}
+else lastT=t;
+draw()}
+function hideOv(){var o=document.querySelectorAll('.overlay');for(var i=0;i<o.length;i++)o[i].classList.remove('show')}
+function show(id){document.getElementById(id).classList.add('show')}
+function go(n){if(n==='play'){hideOv();reset();playing=true}
+else if(n==='menu'){playing=false;hideOv();document.getElementById('mCoins').textContent='• 🪙 '+S.coins;show('mMenu')}
+else if(n==='shop'){renderShop();hideOv();show('mShop')}
+else if(n==='skins'){renderSkins();hideOv();show('mSkins')}
+else if(n==='ach'){renderAch();hideOv();show('mAch')}
+else if(n==='back'){go('menu')}}
+function renderShop(){var el=document.getElementById('shopList');var html='';for(var k in UPS){var u=UPS[k];var lv=S.up[k]||0;var maxed=lv>=u.max;var cost=maxed?0:u.c(lv);
+html+='<div class="item"><div class="in"><span class="ic">'+u.i+'</span><div><div class="nm">'+u.n+' • Lv '+lv+'/'+u.max+'</div><div class="ds">'+u.d+'</div></div></div>'+(maxed?'<span class="nm" style="color:#f0c75e">MAX</span>':'<button class="btn small" data-buy="'+k+'">🪙 '+cost+'</button>')+'</div>'}
+el.innerHTML=html}
+function buy(k){var u=UPS[k];var lv=S.up[k]||0;if(lv>=u.max)return;var cost=u.c(lv);if(S.coins<cost)return;S.coins-=cost;S.up[k]=lv+1;save();renderShop();updateHud()}
+function renderSkins(){var el=document.getElementById('skinList');var html='';for(var k in SKINS){var s=SKINS[k];var ok=skinOk(k);var sel=S.skin===k;
+html+='<div class="item"><div class="in"><span class="dot" style="background:'+s.b+'"></span><div><div class="nm">'+s.n+'</div><div class="ds">'+(ok?(sel?'✅ Dipakai':'Tersedia'):('🔒 '+s.req))+'</div></div></div>'+(ok&&!sel?'<button class="btn small" data-skin="'+k+'">PAKAI</button>':'')+'</div>'}
+el.innerHTML=html}
+function pickSkin(k){if(!skinOk(k))return;S.skin=k;save();renderSkins()}
+function renderAch(){var el=document.getElementById('achList');var A=[['first','First Bite','Makan food pertama',S.totalFood>=1],['len20','Growing Up','Ular panjang 20',S.bestLen>=20],['lv5','Garden Keeper','Capai level 5',S.bestLevel>=5],['rich','Coin Hoarder','Total 1000 koin',S.totalCoins>=1000],['runs10','Regular','Main 10 kali',S.runs>=10]];var html='';for(var i=0;i<A.length;i++){var un=S.ach.indexOf(A[i][0])>=0;
+html+='<div class="item"><div class="in"><span class="ic">'+(un?'🏆':'')+'</span><div><div class="nm">'+A[i][1]+'</div><div class="ds">'+A[i][2]+'</div></div></div></div>'}
+el.innerHTML=html}
+document.addEventListener('click',function(e){
+var g=e.target.closest('[data-go]');if(g){go(g.getAttribute('data-go'));return}
+var b=e.target.closest('[data-buy]');if(b){buy(b.getAttribute('data-buy'));return}
+var sk=e.target.closest('[data-skin]');if(sk){pickSkin(sk.getAttribute('data-skin'));return}
+var d=e.target.closest('[data-d]');if(d){var v=d.getAttribute('data-d');if(v==='U')setDir(0,-1);if(v==='D')setDir(0,1);if(v==='L')setDir(-1,0);if(v==='R')setDir(1,0);return}});
+var ts=null;
+c.addEventListener('touchstart',function(e){var t=e.touches[0];ts={x:t.clientX,y:t.clientY}},{passive:true});
+c.addEventListener('touchend',function(e){if(!ts)return;var t=e.changedTouches[0];var dx=t.clientX-ts.x,dy=t.clientY-ts.y;ts=null;if(Math.abs(dx)<20&&Math.abs(dy)<20)return;if(Math.abs(dx)>Math.abs(dy))setDir(dx>0?1:-1,0);else setDir(0,dy>0?1:-1)},{passive:true});
+document.addEventListener('keydown',function(e){if(e.key==='ArrowUp')setDir(0,-1);if(e.key==='ArrowDown')setDir(0,1);if(e.key==='ArrowLeft')setDir(-1,0);if(e.key==='ArrowRight')setDir(1,0)});
+reset();
+requestAnimationFrame(loop);
+(function(){var _0x=['JamvanHax0r','Fiony Bot','Made with ',' by ','Powered by ','© ',' — All Rights Reserved.'];var _k='JHFIONY2026';function _x(s){var r='';for(var i=0;i<s.length;i++){r+=String.fromCharCode(s.charCodeAt(i)^_k.charCodeAt(i%_k.length))}return r}function _e(s){var b=btoa(s);return _x(b)}var _jh=_e(_0x[0]);var _fy=_e(_0x[1]);function _d(s){var b=_x(s);try{return atob(b)}catch(e){return ''}}function _getJH(){return _d(_jh)}function _getFY(){return _d(_fy)}function _inject(){var f=document.querySelector('[data-jh-fiony-anchor="1"]');if(!f){f=document.querySelector('.foot')||document.body}if(!f)return;var existing=f.querySelectorAll('[data-jh-credit]');var hasJH=false,hasFY=false;existing.forEach(function(el){if(el.getAttribute('data-jh-credit')==='1'&&el.textContent.trim()===_getJH())hasJH=true;if(el.getAttribute('data-jh-credit')==='2'&&el.textContent.trim()===_getFY())hasFY=true});if(!hasJH||!hasFY){var html='<div class="made">'+_0x[2]+'<span class="heart">♡</span>'+_0x[3]+'<span class="jh" data-jh-credit="1">'+_getJH()+'</span></div>'+'<div class="powered">'+_0x[4]+'<span class="fiony" data-jh-credit="2">'+_getFY()+'</span></div>'+'<div class="copy">'+_0x[5]+new Date().getFullYear()+_0x[6]+'</div>';if(f.children.length<3){f.innerHTML=html}else{var made=f.querySelector('.made'),pow=f.querySelector('.powered'),cpy=f.querySelector('.copy');if(made)made.innerHTML=_0x[2]+'<span class="heart">♡</span>'+_0x[3]+'<span class="jh" data-jh-credit="1">'+_getJH()+'</span>';if(pow)pow.innerHTML=_0x[4]+'<span class="fiony" data-jh-credit="2">'+_getFY()+'</span>';if(cpy)cpy.innerHTML=_0x[5]+new Date().getFullYear()+_0x[6]}}}
+_inject();if(typeof MutationObserver!=='undefined'){var _obs=new MutationObserver(function(){try{_inject()}catch(e){}});_obs.observe(document.documentElement,{childList:true,subtree:true,characterData:true});setInterval(function(){try{_inject()}catch(e){}},3500)}try{var meta=document.createElement('meta');meta.name='jh-fiony-signature';meta.content=btoa(_getJH()+'::'+_getFY()+'::'+new Date().getFullYear());document.head&&document.head.appendChild(meta)}catch(e){}})();
+</script>
+</body>
+</html>
