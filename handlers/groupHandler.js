@@ -3,11 +3,23 @@
  * Hapus credit gak bikin u jago dumbass. 
  * Hargai sebagaimana u mau dihargai.
  * groupHandler.js — Event grup: welcome & goodbye dengan teks custom + PP.
+ * [UPDATE AND FIX BELOW]
+ *
+ * - TANPA sharp: jpegThumbnail = jpeg asli yang disajikan WA (preview kecil),
+ *   dikirim sebagai Uint8Array bersih (byteOffset 0)
+ * - participants dinormalisasi (string/object → JID, prefer PN)
+ * - LID di-resolve ke PN biar mention nyangkut bener
+ * - Karakter invisible Unicode (sisipan WA saat ngetik @user) di-strip
+ *   biar placeholder @user / %group selalu ke-replace
+ * - PP privat/gagal → fallback teks
  */
 import { logger } from '../core/logger.js'
 import { isOn, getSetting } from '../core/groupSettings.js'
 
 const recent = new Map()
+
+// [UPDATE] Zero-width / invisible formatting chars yang diselipin WA (mention isolate, dll)
+const INVISIBLE_RE = /[\u200b-\u200f\u2060-\u2069\ufeff]/g
 
 function toJid(p) {
   if (typeof p === 'string') return p
@@ -65,7 +77,7 @@ async function getProfile(client, jid) {
         const res = await fetch(pic.url)
         if (res.ok) return Buffer.from(await res.arrayBuffer())
       }
-    } catch { /* abaikan, coba varian lain */ }
+    } catch { /* coba varian lain */ }
     return null
   }
 
@@ -146,10 +158,13 @@ async function sendGreeting(client, groupJid, rawParticipants, kind) {
         ? `selamat datang @user di %group. Jangan lupa baca deskripsi grup ya!`
         : `selamat tinggal @user, telah keluar dari %group. Jangan lupa arah pulang!`
 
-    const text = (custom ?? defaultText)
+    // [FIX] ✅ Strip invisible chars sisipan WA, baru replace placeholder
+    const text = String(custom ?? defaultText)
+      .replace(INVISIBLE_RE, '')
       .replace(/%group/g, groupName)
       .replace(/@user/g, tags)
 
+    // [FIX] 1) Gambar PP + thumbnail preview (Uint8Array bersih)
     const { image, thumb } = await getProfile(client, participants[0])
     if (image && thumb) {
       try {
@@ -169,6 +184,7 @@ async function sendGreeting(client, groupJid, rawParticipants, kind) {
       }
     }
 
+    // [FIX] 2) Fallback teks
     await client.message.send(groupJid, {
       extendedTextMessage: {
         text,

@@ -3,105 +3,16 @@
  * Hapus credit gak bikin u jago dumbass. 
  * Hargai sebagaimana u mau dihargai.
  * aicode.js — Fiony AI File Protocol
- * ambil file bot, kirim sebagai rich response
- * (teks + code block syntax-highlighted + tabel ringkasan + footer)
+ * dump file sebagai rich response
 */
 
 import fs from 'node:fs';
 import path from 'node:path';
-
-const KEYWORDS = new Set([
-  'const', 'let', 'var', 'function', 'async', 'await', 'return', 'if', 'else',
-  'for', 'while', 'do', 'switch', 'case', 'break', 'continue', 'import',
-  'export', 'from', 'default', 'class', 'extends', 'new', 'try', 'catch',
-  'finally', 'throw', 'typeof', 'instanceof', 'in', 'of', 'delete', 'void',
-  'yield', 'static', 'get', 'set', 'this', 'super', 'null', 'undefined',
-  'true', 'false'
-]);
-
-const LANGS = {
-  js: 'javascript', mjs: 'javascript', cjs: 'javascript',
-  json: 'json', html: 'html', htm: 'html',
-  py: 'python', md: 'markdown', sh: 'bash',
-  yml: 'yaml', yaml: 'yaml', ts: 'typescript'
-};
-
-// Tokenizer sederhana -> highlightType proto WA:
-// 0 default • 1 keyword • 2 method • 3 string • 4 number • 5 comment
-function tokenize(code) {
-  const blocks = [];
-  const push = (type, content) => {
-    if (!content) return;
-    const last = blocks[blocks.length - 1];
-    if (last && last.highlightType === type) last.codeContent += content;
-    else blocks.push({ highlightType: type, codeContent: content });
-  };
-
-  let i = 0;
-  const n = code.length;
-  while (i < n) {
-    const c = code[i];
-
-    if (c === '/' && code[i + 1] === '/') {
-      let j = i;
-      while (j < n && code[j] !== '\n') j++;
-      push(5, code.slice(i, j));
-      i = j;
-      continue;
-    }
-
-    if (c === '/' && code[i + 1] === '*') {
-      let j = i + 2;
-      while (j < n && !(code[j] === '*' && code[j + 1] === '/')) j++;
-      j = Math.min(n, j + 2);
-      push(5, code.slice(i, j));
-      i = j;
-      continue;
-    }
-
-    if (c === '"' || c === "'" || c === '`') {
-      const q = c;
-      let j = i + 1;
-      while (j < n && code[j] !== q) {
-        if (code[j] === '\\') j++;
-        j++;
-      }
-      j = Math.min(n, j + 1);
-      push(3, code.slice(i, j));
-      i = j;
-      continue;
-    }
-
-    if (/[0-9]/.test(c)) {
-      let j = i;
-      while (j < n && /[0-9._xXa-fA-F]/.test(code[j])) j++;
-      push(4, code.slice(i, j));
-      i = j;
-      continue;
-    }
-
-    if (/[A-Za-z_$]/.test(c)) {
-      let j = i;
-      while (j < n && /[A-Za-z0-9_$]/.test(code[j])) j++;
-      const word = code.slice(i, j);
-      let k = j;
-      while (k < n && (code[k] === ' ' || code[k] === '\t')) k++;
-      if (KEYWORDS.has(word)) push(1, word);
-      else if (code[k] === '(') push(2, word);
-      else push(0, word);
-      i = j;
-      continue;
-    }
-
-    push(0, c);
-    i++;
-  }
-  return blocks;
-}
+import { tokenize, LANGS } from '../../lib/highlight.js';
 
 export default {
   name: 'aicode',
-  aliases: ['fio', 'ambil'],
+  aliases: ['ambil'],
   tags: 'tools',
   owner: true,
   description: 'Fiony AI: ambil file & kirim kode dengan format rich response',
@@ -112,8 +23,8 @@ export default {
     if (!input) {
       return ctx.reply(
         '🤖 *FIONY AI* — _File Protocol_\n\n' +
-        'Mau ambil file apa, bos?\n\n' +
-        '*Contoh:*\n.fio feat/game/snake.js'
+        'Mau ambil file apa, Bos?\n\n' +
+        '*Contoh:*\n.aicode feat/game/snake.js'
       );
     }
 
@@ -170,10 +81,7 @@ export default {
               },
               {
                 messageType: 5,
-                codeMetadata: {
-                  codeLanguage: lang,
-                  codeBlocks: blocks
-                }
+                codeMetadata: { codeLanguage: lang, codeBlocks: blocks }
               },
               {
                 messageType: 4,
