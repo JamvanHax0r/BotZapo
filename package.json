@@ -19,7 +19,7 @@
     "qrcode": "^1.5.4",
     "sharp": "^0.35.4",
     "syntax-error": "^1.4.0",
-    "zapo-js": "latest"
+    "zapo-js": "^1.8.2"
   },
   "engines": {
     "node": ">=20.9.0"

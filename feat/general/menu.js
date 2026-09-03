@@ -11,6 +11,7 @@ import { onRichReply } from '../../handlers/messageHandler.js'
 
 const CATEGORY = {
   general: '📌 GENERAL',
+  downloader: '📥 DOWNLOADER',
   interactive: '🎮 INTERACTIVE',
   owner: '👑 OWNER',
   tools: '🛠️ TOOLS',
@@ -23,6 +24,7 @@ const CATEGORY = {
 
 const CATEGORY_INFO = {
   general: 'Informasi & Utilitas Dasar',
+  downloader: 'Downloader berbagai media',
   interactive: 'Demo Tombol & List',
   owner: 'Khusus Owner Bot',
   tools: 'Stiker & Konversi Media',
