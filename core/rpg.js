@@ -3,7 +3,6 @@
  * Hapus credit gak bikin u jago dumbass. 
  * Hargai sebagaimana u mau dihargai.
  * rpg.js — Character management Nusantara Wilds + maintenance DB.
- * [UPDATE BELOW]
  *
  * Rest time-based (lazy resolve), penangkal DB bengkak,
  * + getCompletedQuestIds buat urutan story quest.
@@ -134,7 +133,14 @@ export function getCharacter(jid) {
 
 export function createCharacter(jid, name) {
   const existing = readRaw(jid)
-  if (existing) return resolveRest(existing)
+  if (existing) {
+    // ✅ Self-heal: nama placeholder "Dev-<nomor>" ditimpa nama asli (pushName)
+    if (existing.name?.startsWith('Dev-') && name && !String(name).startsWith('Dev-')) {
+      write(jid, { name })
+      return resolveRest(readRaw(jid))
+    }
+    return resolveRest(existing)
+  }
   db.prepare('INSERT INTO rpg_characters (jid, name) VALUES (?, ?)').run(jid, name ?? 'Petualang')
   return getCharacter(jid)
 }

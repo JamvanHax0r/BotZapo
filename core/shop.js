@@ -2,13 +2,14 @@
  * © JamvanHax0r — Fiony Bot
  * Hapus credit gak bikin u jago dumbass. 
  * Hargai sebagaimana u mau dihargai.
- * shop.js — Logic sell/buy/craft Nusantara Wilds.
- * [UPDATE AND FIX BELOW]
+ * shop.js — Logic sell/buy/craft/cook Nusantara Wilds.
  *
  * - Wallet SATU dompet (users.sqlite)
  * - Buyback rate 60% (sekali potong)
  * - itemInfo(): nama/harga/efek konsumsi dari semua sumber item
- * - resolveAnyItemId(): resolver universal (gathering + toko + craft)
+ *   (gathering + toko + craft + masakan)
+ * - resolveAnyItemId(): resolver universal (gathering + toko + craft + cook)
+ * [UPDATE BELOW]
  */
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -22,6 +23,7 @@ const __dirname = dirname(__filename)
 
 const SHOP = JSON.parse(readFileSync(join(__dirname, '../src/rpg/shop.json'), 'utf8'))
 const RECIPES = JSON.parse(readFileSync(join(__dirname, '../src/rpg/recipes.json'), 'utf8'))
+const COOKING = JSON.parse(readFileSync(join(__dirname, '../src/rpg/recipes_cooking.json'), 'utf8'))
 
 export const MERCHANT_NAME = SHOP.merchant
 
@@ -35,6 +37,21 @@ const CRAFT_RESTORE = {
   herbal_bandage: { energy_restore: 0, hp_restore: 25 }
 }
 
+/** Index masakan: id → info lengkap (nama/tier/value/restore). */
+export const COOK_INDEX = {}
+for (const r of COOKING.recipes) {
+  COOK_INDEX[r.id] = {
+    id: r.id,
+    name: r.name,
+    desc: r.desc,
+    tier: r.tier,
+    value: r.value,
+    ingredients: r.ingredients,
+    energy_restore: r.restore?.energy ?? 0,
+    hp_restore: r.restore?.hp ?? 0
+  }
+}
+
 export function getShopItems() {
   return SHOP.items
 }
@@ -45,6 +62,14 @@ export function getRecipes() {
 
 export function getRecipe(id) {
   return RECIPES.recipes.find((r) => r.id === id) ?? null
+}
+
+export function getCookRecipes() {
+  return COOKING.recipes
+}
+
+export function getCookRecipe(id) {
+  return COOKING.recipes.find((r) => r.id === id) ?? null
 }
 
 /** Info item dari sumber mana pun; null kalau gak dikenal. */
@@ -73,6 +98,18 @@ export function itemInfo(id) {
     }
   }
 
+  const cook = COOK_INDEX[id]
+  if (cook) {
+    return {
+      id,
+      name: cook.name,
+      tier: cook.tier,
+      value: cook.value,
+      energy_restore: cook.energy_restore,
+      hp_restore: cook.hp_restore
+    }
+  }
+
   return null
 }
 
@@ -87,7 +124,8 @@ export function resolveAnyItemId(raw) {
 
   const pools = [
     ...SHOP.items.map((i) => ({ id: i.id, name: i.name })),
-    ...RECIPES.recipes.map((r) => ({ id: r.output.id, name: r.output.name }))
+    ...RECIPES.recipes.map((r) => ({ id: r.output.id, name: r.output.name })),
+    ...COOKING.recipes.map((r) => ({ id: r.id, name: r.name }))
   ]
 
   return (
@@ -174,4 +212,32 @@ export function craftItem(jid, recipeId) {
   addItem(jid, recipe.output.id, recipe.output.amount)
 
   return { success: true, recipe, output: recipe.output }
+}
+
+/** Masak hidangan dari resep cooking. */
+export function cookItem(jid, recipeId) {
+  const recipe = getCookRecipe(recipeId)
+  if (!recipe) return { error: 'recipe_not_found' }
+
+  const inv = getInventory(jid)
+
+  for (const ing of recipe.ingredients) {
+    const owned = inv.find((r) => r.item_id === ing.id)
+    if (!owned || owned.amount < ing.amount) {
+      return {
+        error: 'insufficient_ingredient',
+        missing: ing.id,
+        needed: ing.amount,
+        have: owned?.amount ?? 0
+      }
+    }
+  }
+
+  for (const ing of recipe.ingredients) {
+    removeItem(jid, ing.id, ing.amount)
+  }
+
+  addItem(jid, recipe.id, 1)
+
+  return { success: true, recipe }
 }

@@ -4,6 +4,8 @@
  * Hargai sebagaimana u mau dihargai.
  * use.js — Konsumsi item (makan/minum/oles) buat pulih instan.
  * .use tanpa argumen → langsung tampil apa aja yang bisa dikonsumsi.
+ * Kalau dikonsumsi saat REST: sesi rest di-rebase biar boost langsung
+ * keliatan dan rest lanjut pulihin sisanya (gak ketimpa interpolasi).
  */
 import { createCharacter, getCharacter, getInventory, removeItem, updateCharacter } from '../../core/rpg.js'
 import { itemInfo, resolveAnyItemId } from '../../core/shop.js'
@@ -46,7 +48,7 @@ export default {
       })
 
       await ctx.reply(
-`╭─🍽️「 *BISA DIKONSUMSI* 」🍽️─
+`╭─️「 *BISA DIKONSUMSI* 」🍽️─╮
 │
 ${lines.length ? lines.join('\n') : '│ Satchel-mu gak punya barang konsumsi.\n│ Beli di .shop (roti/teh) atau petik berry/madu.'}
 │
@@ -63,8 +65,8 @@ ${lines.length ? lines.join('\n') : '│ Satchel-mu gak punya barang konsumsi.\n
       return
     }
 
-    const e = info.energy_restore ?? 0
-    const h = info.hp_restore ?? 0
+    const e = (info.energy_restore ?? 0) * amount
+    const h = (info.hp_restore ?? 0) * amount
 
     if (!e && !h) {
       await ctx.reply(
@@ -81,23 +83,47 @@ ${lines.length ? lines.join('\n') : '│ Satchel-mu gak punya barang konsumsi.\n
       return
     }
 
-    const after = updateCharacter(ctx.sender, {
-      energy: Math.min(char.max_energy, char.energy + e * amount),
-      hp: Math.min(char.max_hp, char.hp + h * amount)
-    })
+    let after
+    if (char.resting) {
+      // ✅ Rebase sesi rest: boost masuk sekarang, rest lanjut pulihin sisanya
+      const newEnergy = Math.min(char.max_energy, char.energy + e)
+      const newHp = Math.min(char.max_hp, char.hp + h)
+      const missing =
+        (char.max_energy - newEnergy) +
+        (char.max_stamina - char.stamina) +
+        (char.max_hp - newHp)
+      const duration = Math.min(600, Math.max(30, missing * 2))
+      const now = Math.floor(Date.now() / 1000)
+
+      after = updateCharacter(ctx.sender, {
+        energy: newEnergy,
+        hp: newHp,
+        rest_started_at: now,
+        rest_duration: duration,
+        rest_base_energy: newEnergy,
+        rest_base_hp: newHp,
+        rest_base_stamina: char.stamina
+      })
+    } else {
+      after = updateCharacter(ctx.sender, {
+        energy: Math.min(char.max_energy, char.energy + e),
+        hp: Math.min(char.max_hp, char.hp + h)
+      })
+    }
 
     removeItem(ctx.sender, itemId, amount)
 
     const gains = []
-    if (e) gains.push(`⚡ +${e * amount}`)
-    if (h) gains.push(`❤️ +${h * amount}`)
+    if (e) gains.push(`⚡ +${e}`)
+    if (h) gains.push(`❤️ +${h}`)
 
     await ctx.reply(
       `${pick(USE_FLAVOR).replaceAll('{item}', `*${info.name}*`)}\n\n` +
-      `╭─🍽️「 *DIKONSUMSI* 」🍽️─╮\n` +
+      `╭─️「 *DIKONSUMSI* 」🍽️─╮\n` +
       `│ *${info.name}* ×${amount}\n` +
       `│ ${gains.join(' • ')}\n` +
       `│ ❤️ ${after.hp}/${after.max_hp} • ⚡ ${after.energy}/${after.max_energy}\n` +
+      (char.resting ? `│ 🛖 Istirahat dilanjutkan, sisa kekurangan dipulihkan pelan-pelan.\n` : '') +
       `╰────────────────────✦╯`
     )
   }

@@ -4,12 +4,14 @@
  * Hargai sebagaimana u mau dihargai.
  * gather.js — Aktivitas gathering Nusantara Wilds.
  * .hunt / .forage / .fish — energi & stamina terpakai tiap percobaan,
- * miss chance 25%, diblokir selama istirahat, progress quest otomatis.
+ * miss chance 25%, diblokir selama istirahat, progress quest otomatis,
+ * drop modifier sesuai lokasi sekarang.
  */
 import { createCharacter, getCharacter, updateCharacter, addItem, gainXp } from '../../core/rpg.js'
 import { rollDrop, TIER_ICON } from '../../src/rpg/dropTable.js'
 import { FLAVOR, pick, fmtSec } from '../../src/rpg/flavor.js'
 import { progressQuests } from '../../core/questEngine.js'
+import { getCurrentLocation, getDropModifier } from '../../core/location.js'
 
 const ACTIVITY = {
   hunt: { key: 'hunting', icon: '🏹', label: 'BERBURU', energy: 20, stamina: 15 },
@@ -30,6 +32,15 @@ export default {
     const act = ACTIVITY[ctx.command]
     const existed = getCharacter(ctx.sender)
     const char = createCharacter(ctx.sender, ctx.pushName)
+    const loc = getCurrentLocation(ctx.sender)
+
+    if (!loc.activities.includes(ctx.command)) {
+      await ctx.reply(
+        `😅 Kamu tidak bisa ${act.label.toLowerCase()} di *${loc.name}*.\n` +
+        `Coba pindah lokasi dulu: ${ctx.prefix}travel`
+      )
+      return
+    }
 
     if (char.resting) {
       await ctx.reply(
@@ -54,7 +65,9 @@ export default {
       stamina: Math.max(0, char.stamina - act.stamina)
     })
 
-    const missed = Math.random() < MISS_CHANCE
+    const modifier = getDropModifier(ctx.sender)
+    const missChance = MISS_CHANCE / modifier
+    const missed = Math.random() < missChance
     const drop = missed ? null : rollDrop(act.key)
 
     if (!drop) {
@@ -69,9 +82,8 @@ export default {
     }
 
     addItem(ctx.sender, drop.id, 1)
-    const { leveledUp } = gainXp(ctx.sender, XP_GAIN[drop.tier] ?? 2)
+    const { char: charAfter, leveledUp } = gainXp(ctx.sender, XP_GAIN[drop.tier] ?? 2)
 
-    // Progress quest yang cocok
     const completions = progressQuests(ctx.sender, [
       'gather:any',
       `gather:${act.key}`,
@@ -86,6 +98,7 @@ export default {
       `│ 🏷️ Tier: ${TIER_ICON[drop.tier]} ${drop.tier.toUpperCase()}\n` +
       `│ 💵 Nilai: ${drop.value} gold\n` +
       `│ ⭐ +${XP_GAIN[drop.tier] ?? 2} XP\n` +
+      `│ 📍 Lokasi: ${loc.name} (modifier ${modifier}x)\n` +
       `│\n` +
       `│ ⚡ Energi: ${after.energy}/${after.max_energy}\n` +
       `│ 💪 Stamina: ${after.stamina}/${after.max_stamina}\n` +
@@ -93,7 +106,7 @@ export default {
 
     if (!existed) text = `${pick(FLAVOR.welcome)}\n\n${text}`
     if (leveledUp) {
-      text += `\n\n🔥 *TUBUHMU KIAN TERLATIH!* Naik ke level ${after.level} — batas stats meningkat & pulih penuh.`
+      text += `\n\n🔥 *TUBUHMU KIAN TERLATIH!* Naik ke level ${charAfter.level} — batas stats meningkat & pulih penuh.`
     }
     for (const c of completions) {
       text +=
