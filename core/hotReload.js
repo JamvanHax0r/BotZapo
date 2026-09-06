@@ -52,11 +52,20 @@ function queueReload(eventName, filePath) {
   debounceTimer = setTimeout(runReload, config.hotReload?.debounceMs ?? 400)
 }
 
-async function notifyOwners(changes, count) {
+// [FIX] `result` sekarang { count, total, failed } dari loadFeatures(), bukan angka lagi.
+async function notifyOwners(changes, result) {
   if (!config.hotReload?.notifyOwner || !clientRef) return
-  const text =
+
+  const { count, total, failed } = result
+
+  let text =
     `♻️ *Hot Reload*\n${changes.map((c) => `• ${c}`).join('\n')}\n\n` +
-    `✅ ${count} feature aktif.`
+    `✅ ${count}/${total} feature aktif.`
+
+  if (failed?.length) {
+    text += `\n\n❎ *${failed.length} gagal dimuat:*\n`
+    text += failed.map((f) => `• ${f.file}\n   ${f.reason.split(' -> ')[1] ?? f.reason}`).join('\n')
+  }
 
   for (const jid of ownerJids()) {
     try {
@@ -78,9 +87,14 @@ async function runReload() {
   pendingChanges.clear()
 
   try {
-    const count = await loadFeatures()
-    logger.success(`✅ [Hot Reload] Selesai — ${count} feature aktif (${changes.length} file berubah).`)
-    await notifyOwners(changes, count)
+    const result = await loadFeatures()
+    const { count, total, failed } = result
+
+    logger.success(
+      `✅ [Hot Reload] Selesai — ${count}/${total} feature aktif` +
+      `${failed?.length ? ` (${failed.length} gagal)` : ''} (${changes.length} file berubah).`
+    )
+    await notifyOwners(changes, result)
   } catch (err) {
     logger.error({ err }, '❌ [Hot Reload] Gagal reload feature')
   } finally {

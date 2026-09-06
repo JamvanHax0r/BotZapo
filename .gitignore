@@ -4,6 +4,7 @@ node_modules/
 *.sqlite-journal
 npm-debug.log*
 .DS_Store
+src/clients/
 config/
 scraper/
 session/

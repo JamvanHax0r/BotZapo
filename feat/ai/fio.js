@@ -1,24 +1,27 @@
 /**
  * © JamvanHax0r — Fiony Bot
- * Hapus credit gak bikin u jago dumbass. 
+ * Hapus credit gak bikin u jago dumbass.
  * Hargai sebagaimana u mau dihargai.
  * fio.js — Fiony AI
- * rich response + vision (quoted & caption) +
- * file protocol + real-time + sesi
- * [UPDATE AND FIX BELOW]
+ * rich + vision gate + file anti-down +
+ * live web + real-time + sesi + mode darurat
+ * + fix: response kosong, teks kepotong, code truncation
  */
+
 import fs from 'node:fs';
 import path from 'node:path';
-import { orca, FIONY_PERSONA } from '../../config/ai/orca.js';
+import { orca, FIONY_PERSONA, ORCA_CONFIG, jina } from '../../config/ai/orca.js';
 import { tokenize, LANGS, parseMarkdown } from '../../lib/highlight.js';
 
-const MAX_CODE = 5000;
+const MAX_CODE = 12000;
 const MAX_TEXT = 3500;
-const MAX_CTX = 6000;
+const MAX_CTX = 5000;
 const MEM = (globalThis.JH_FIO_MEM ??= new Map());
 const MEM_CAP = 8;
 
-// ===== [FIX] RICH BUILDERS =====
+// Request yang butuh output kode panjang → reasoning OFF biar token gak habis buat mikir
+const isCodeRequest = (q) => /\b(kode|code|html|css|javascript|js|script|game)\b/i.test(q);
+
 function codeSubmessage(code, lang) {
   let src = code;
   let truncated = false;
@@ -39,7 +42,50 @@ function tableSubmessage(rows) {
   return { messageType: 4, tableMetadata: { rows: clean } };
 }
 
-// ===== [FIX] FILE PROTOCOL FLEKSIBEL =====
+function fileSummaryTable(file) {
+  return {
+    messageType: 4,
+    tableMetadata: {
+      title: 'Ringkasan File',
+      rows: [
+        { items: ['Properti', 'Nilai'], isHeading: true },
+        { items: ['Nama', file.name], isHeading: false },
+        { items: ['Path', file.safe], isHeading: false },
+        { items: ['Bahasa', LANGS[file.ext] || file.ext], isHeading: false },
+        { items: ['Ukuran', (file.code.length / 1024).toFixed(1) + ' KB'], isHeading: false },
+        { items: ['Baris', String(file.code.split('\n').length)], isHeading: false }
+      ]
+    }
+  };
+}
+
+function formatSearch(text) {
+  const items = [];
+  const re = /\[(\d+)\] Title:\s*(.+)\n\[\1\] URL Source:\s*(.+)(?:\n\[\1\] Description:\s*(.+))?/g;
+  let m;
+  while ((m = re.exec(text))) {
+    items.push({
+      n: m[1],
+      title: m[2].trim(),
+      url: m[3].trim(),
+      desc: (m[4] || '').trim()
+    });
+  }
+  if (!items.length) return null;
+
+  let out = '';
+  for (const it of items.slice(0, 6)) {
+    out += '*' + it.n + '. ' + it.title + '*\n' + it.url + (it.desc ? '\n' + it.desc : '') + '\n\n';
+  }
+  return out.trim();
+}
+
+function chunkText(t, n) {
+  const parts = [];
+  for (let i = 0; i < t.length; i += n) parts.push(t.slice(i, i + n));
+  return parts;
+}
+
 const SKIP_DIR = new Set(['node_modules', '.git', 'session', 'tmp', 'dist', 'coverage']);
 
 function walk(dir, out = [], depth = 0) {
@@ -95,12 +141,10 @@ function detectFile(query) {
   return null;
 }
 
-// ===== [UPDATE] VISION: caption mode + quoted mode (downloadBytes terima raw IMessage) =====
 async function extractImage(ctx) {
   const msg = ctx.event?.message;
   if (!msg) return null;
 
-  // [UPDATE] 1) Kirim foto langsung + caption .fio ...
   if (msg.imageMessage) {
     try {
       const buf = await ctx.client.message.downloadBytes(msg, { maxBytes: 6 * 1024 * 1024 });
@@ -111,7 +155,6 @@ async function extractImage(ctx) {
     } catch {}
   }
 
-  // [UPDATE] 2) Reply foto + .fio ...
   const ci = msg.extendedTextMessage?.contextInfo || null;
   const qm = ci?.quotedMessage;
   if (qm && qm.imageMessage) {
@@ -127,12 +170,32 @@ async function extractImage(ctx) {
   return null;
 }
 
-// ===== [UPDATE] LIVE: baca URL =====
-async function readUrl(url) {
+function extractUrl(query) {
+  let url = null;
+
+  const withScheme = query.match(/https?:\/\/\S+/i);
+  if (withScheme) {
+    url = withScheme[0];
+  } else {
+    const bare = query.match(
+      /(?:^|\s)((?:www\.)?(?:[\w-]+\.)+(?:com|net|org|id|io|ai|co|dev|me|info|xyz|us|my|sg|to|app|gg|tv|cc)(?:\/\S*)?)(?=\s|$)/i
+    );
+    if (bare) url = 'https://' + bare[1];
+  }
+
+  if (url) url = url.replace(/[?!.,;:)'"\]]+$/g, '');
+  return url;
+}
+
+async function readPage(url) {
+  const viaJina = await jina.read(url, MAX_CTX);
+  if (viaJina) return viaJina;
+
   try {
     const res = await fetch(url, {
       headers: { 'User-Agent': 'Mozilla/5.0 (compatible; FionyBot/1.0)' },
-      redirect: 'follow'
+      redirect: 'follow',
+      signal: AbortSignal.timeout(15000)
     });
     if (!res.ok) return null;
     const type = res.headers.get('content-type') || '';
@@ -169,6 +232,8 @@ function realTimeContext() {
   );
 }
 
+const FOOTER = '\n> _*Made with♡ by JamvanHax0r*_\n> _*Powered by FionyVerse*_';
+
 export default {
   name: 'fio',
   aliases: ['ai', 'fiony', 'tanya'],
@@ -193,26 +258,92 @@ export default {
         '• `.fio siapa kamu?`\n' +
         '• `.fio ambil file math.js`\n' +
         '• `.fio rangkum https://...`\n' +
+        '• `.fio buka github.com/FionyBot/JH-Zapo`\n' +
+        '• `.fio cari berita Persija terbaru`\n' +
+        '• `.fio buatkan kode HTML game raid`\n' +
         '• Reply foto + `.fio ini foto apa?`\n' +
-        '• Kirim foto + caption `.fio ini apa?`\n' +
         '• `.fio reset` (mulai sesi baru)'
       );
     }
 
     await ctx.react('🤖');
 
+    let pageRaw = null;
+    let searchRaw = null;
+
     try {
+      const file = (query && ctx.isOwner) ? detectFile(query) : null;
+
+      if (file && /\b(ambil(kan|in)?|kirim(kan)?|lihat|tunjuk(in)?|show|display|kasih)\b/i.test(query)) {
+        await ctx.client.message.send(ctx.chat, {
+          botForwardedMessage: {
+            message: {
+              richResponseMessage: {
+                messageType: 1,
+                submessages: [
+                  {
+                    messageType: 2,
+                    messageText:
+                      '🤖 *FIONY AI* — _File Protocol_\n' +
+                      '✅ File `' + file.name + '` sudah diambil lengkap, Bos!\n\n' +
+                      '📄 *Isi File:*'
+                  },
+                  codeSubmessage(file.code, file.ext),
+                  fileSummaryTable(file),
+                  { messageType: 2, messageText: FOOTER }
+                ],
+                contextInfo: {
+                  forwardingScore: 999,
+                  isForwarded: true,
+                  forwardedAiBotMessageInfo: { botJid: '867051314767696@bot' },
+                  forwardOrigin: 4
+                }
+              }
+            }
+          }
+        }, { additionalAttributes: { type: 'text' } });
+
+        await ctx.react('📎');
+        return;
+      }
+
+      if (image && !ORCA_CONFIG.visionModel) {
+        return ctx.reply(
+          '👁️ Vision belum aktif, King.\n\n' +
+          'Model free `rahasia_hehe` itu *text-only*.\n' +
+          'Fitur masih tahap dikembangkan Owner, jadi sabar ya, Kak hihi...\n\n' +
+          'Format kirim gambarnya udah bener kok, tinggal modelnya 😌'
+        );
+      }
+
       const toolContext = [];
 
-      const file = (query && ctx.isOwner) ? detectFile(query) : null;
       if (file) {
         toolContext.push('FILE INTERNAL BOT: ' + file.safe + '\n"""\n' + file.code.slice(0, MAX_CTX) + '\n"""');
       }
 
-      const urlMatch = query && query.match(/https?:\/\/\S+/i);
-      if (urlMatch) {
-        const page = await readUrl(urlMatch[0]);
-        if (page) toolContext.push('KONTEN URL ' + urlMatch[0] + ':\n' + page);
+      const url = query ? extractUrl(query) : null;
+      if (url) {
+        pageRaw = await readPage(url);
+        if (pageRaw) {
+          toolContext.push('KONTEN URL ' + url + ':\n' + pageRaw);
+        } else {
+          toolContext.push(
+            'CATATAN: konten URL ' + url + ' gagal diambil (diblokir situs/rate-limit). ' +
+            'Jangan hallucinate; bilang jujur kalau gak bisa baca isinya dan minta user paste bagian pentingnya.'
+          );
+        }
+      } else if (query && /\b(cari(in)?|search|googling|google)\b/i.test(query)) {
+        const q = query.replace(/\b(cari(in)?|search|googling|google)\b\s*/i, '').trim() || query;
+        searchRaw = await jina.search(q, MAX_CTX);
+        if (searchRaw) {
+          toolContext.push('HASIL SEARCH WEB LIVE (Jina):\n' + searchRaw);
+        } else {
+          toolContext.push(
+            'CATATAN: pencarian web live gak tersedia saat ini, mungkin limit jadi coba kembali nanti. ' +
+            'Jangan hallucinate; kalau gak yakin, bilang jujur dan minta user kasih link.'
+          );
+        }
       }
 
       const messages = [{ role: 'system', content: FIONY_PERSONA + realTimeContext() }];
@@ -233,7 +364,24 @@ export default {
       else userContent = { role: 'user', content: query };
       messages.push(userContent);
 
-      const result = await orca.chat(messages, { enable_reasoning: true, max_tokens: 2000 });
+      // ===== FIX BUG KOSONG: request kode → reasoning OFF + token gede =====
+      const codeMode = Boolean(query && !image && isCodeRequest(query));
+      let result = await orca.chat(messages, {
+        model: image ? ORCA_CONFIG.visionModel : undefined,
+        enable_reasoning: !codeMode,
+        max_tokens: codeMode ? 4000 : 2000
+      });
+
+      // Retry sekali kalau content kosong (token habis buat reasoning)
+      if (!result.text || !result.text.trim()) {
+        result = await orca.chat(messages, { enable_reasoning: false, max_tokens: 4000 });
+      }
+
+      // Gak bakal kirim card kosong lagi
+      if (!result.text || !result.text.trim()) {
+        await ctx.react('❎');
+        return ctx.reply('⚠️ Modelnya kehabisan napas tadi (response kosong). Coba ulang sekali lagi ya, Kak 🙏');
+      }
 
       const newHist = MEM.get(ctx.sender) || [];
       newHist.push({ role: 'user', content: query || '[user mengirim gambar]' });
@@ -250,39 +398,37 @@ export default {
           (toolContext.length && !file ? '\n🌐 Live context aktif' : '')
       });
 
+      let contentCount = 0;
       for (const part of parseMarkdown(result.text)) {
         if (part.type === 'text') {
-          submessages.push({ messageType: 2, messageText: part.text.trim().slice(0, MAX_TEXT) });
+          // ===== FIX BUG KEPOTONG: chunk full, jangan slice buang =====
+          const chunks = chunkText(part.text.trim(), MAX_TEXT).slice(0, 6);
+          for (const c of chunks) {
+            submessages.push({ messageType: 2, messageText: c });
+            contentCount++;
+          }
         } else if (part.type === 'code') {
           submessages.push(codeSubmessage(part.code, part.lang));
+          contentCount++;
         } else if (part.type === 'table') {
           submessages.push(tableSubmessage(part.rows));
+          contentCount++;
         }
+      }
+
+      // Safety net: kalau parser gak nemu apa-apa, kirim raw text
+      if (contentCount === 0) {
+        const chunks = chunkText(result.text.trim(), MAX_TEXT).slice(0, 6);
+        for (const c of chunks) submessages.push({ messageType: 2, messageText: c });
       }
 
       if (file) {
         submessages.push({ messageType: 2, messageText: '📄 *Isi File:* `' + file.name + '`' });
         submessages.push(codeSubmessage(file.code, file.ext));
-        submessages.push({
-          messageType: 4,
-          tableMetadata: {
-            title: 'Ringkasan File',
-            rows: [
-              { items: ['Properti', 'Nilai'], isHeading: true },
-              { items: ['Nama', file.name], isHeading: false },
-              { items: ['Path', file.safe], isHeading: false },
-              { items: ['Bahasa', LANGS[file.ext] || file.ext], isHeading: false },
-              { items: ['Ukuran', (file.code.length / 1024).toFixed(1) + ' KB'], isHeading: false },
-              { items: ['Baris', String(file.code.split('\n').length)], isHeading: false }
-            ]
-          }
-        });
+        submessages.push(fileSummaryTable(file));
       }
 
-      submessages.push({
-        messageType: 2,
-        messageText: '\n> _*Made with♡ by JamvanHax0r*_\n> _*Powered by FionyVerse*_'
-      });
+      submessages.push({ messageType: 2, messageText: FOOTER });
 
       await ctx.client.message.send(ctx.chat, {
         botForwardedMessage: {
@@ -303,11 +449,82 @@ export default {
 
       await ctx.react('✨');
     } catch (e) {
-      await ctx.react('❎');
       const msg = String(e.message || e);
+
+      // ===== MODE DARURAT: LLM teler, data Jina jangan dibuang =====
       if (msg.includes('PROVIDER_BUSY')) {
-        return ctx.reply('⚠️ Provider AI-nya lagi penuh/down untuk saat ini. Coba ulang beberapa menit lagi ya, Kak.');
+        try {
+          if (searchRaw) {
+            const fmt = formatSearch(searchRaw);
+            if (fmt) {
+              await ctx.client.message.send(ctx.chat, {
+                botForwardedMessage: {
+                  message: {
+                    richResponseMessage: {
+                      messageType: 1,
+                      submessages: [
+                        {
+                          messageType: 2,
+                          messageText:
+                            '🔎 *FIONY AI* — _Mode Darurat_\n' +
+                            'LLM-nya lagi teler, jadi ini hasil search mentah via Jina 🙏\n\n' + fmt
+                        },
+                        { messageType: 2, messageText: FOOTER }
+                      ],
+                      contextInfo: {
+                        forwardingScore: 999,
+                        isForwarded: true,
+                        forwardedAiBotMessageInfo: { botJid: '867051314767696@bot' },
+                        forwardOrigin: 4
+                      }
+                    }
+                  }
+                }
+              }, { additionalAttributes: { type: 'text' } });
+              await ctx.react('🔎');
+              return;
+            }
+          }
+
+          if (pageRaw) {
+            const chunks = chunkText(pageRaw, MAX_TEXT).slice(0, 3);
+            const subs = [
+              {
+                messageType: 2,
+                messageText:
+                  '🌐 *FIONY AI* — _Mode Darurat_\n' +
+                  'LLM-nya lagi teler, jadi ini konten halaman mentah via Jina Reader 🙏'
+              }
+            ];
+            for (const c of chunks) subs.push({ messageType: 2, messageText: c });
+            subs.push({ messageType: 2, messageText: FOOTER });
+
+            await ctx.client.message.send(ctx.chat, {
+              botForwardedMessage: {
+                message: {
+                  richResponseMessage: {
+                    messageType: 1,
+                    submessages: subs,
+                    contextInfo: {
+                      forwardingScore: 999,
+                      isForwarded: true,
+                      forwardedAiBotMessageInfo: { botJid: '867051314767696@bot' },
+                      forwardOrigin: 4
+                    }
+                  }
+                }
+              }
+            }, { additionalAttributes: { type: 'text' } });
+            await ctx.react('🌐');
+            return;
+          }
+        } catch {}
+
+        await ctx.react('❎');
+        return ctx.reply('⚠️ Provider AI-nya lagi teler (free tier emang rame). Coba ulang beberapa detik lagi ya, Kak. 🙏');
       }
+
+      await ctx.react('❎');
       ctx.reply('*Maaf Error:* ' + msg.slice(0, 300));
     }
   }

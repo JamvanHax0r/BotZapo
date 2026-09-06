@@ -15,7 +15,7 @@ import { restStage, fmtSec } from '../../src/rpg/flavor.js'
 
 export default {
   name: 'status',
-  aliases: ['stats', 'inv', 'inventory'],
+  aliases: ['satchel', 'inv', 'inventory'],
   tags: 'rpg',
   description: 'Status karakter + inventory Nusantara Wilds',
   async run(ctx) {
