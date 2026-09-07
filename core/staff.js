@@ -2,7 +2,7 @@
  * © JamvanHax0r — Fiony Bot
  * Hapus credit gak bikin u jago dumbass. 
  * Hargai sebagaimana u mau dihargai.
- * staff.js — Staff & role management
+ * staff.js — Staff & role management (PN + LID)
  */
 import config from '../config.js'
 import { logger } from './logger.js'
@@ -13,7 +13,10 @@ export function normalizeNumber(input) {
   return n
 }
 
+const lidDigits = (j) => String(j ?? '').replace(/\D/g, '')
+
 const byNumber = new Map()
+const byLid = new Map()
 
 for (const entry of config.staff) {
   const n = normalizeNumber(entry.number)
@@ -21,8 +24,14 @@ for (const entry of config.staff) {
     logger.warn(`Nomor staff "${entry.number}" dinormalisasi jadi "${n}". Disarankan tulis format internasional tanpa +/0.`)
   }
   byNumber.set(n, entry)
+  if (entry.lid) byLid.set(lidDigits(entry.lid), entry)
 }
 
+/** [UPDATE] Lookup staff via PN number, fallback via LID (buat owner yang set username). */
 export function getStaffEntry(pnNumber, lidJid) {
-  return byNumber.get(normalizeNumber(pnNumber)) ?? null
+  return (
+    byNumber.get(normalizeNumber(pnNumber)) ??
+    (lidJid ? byLid.get(lidDigits(lidJid)) : null) ??
+    null
+  )
 }

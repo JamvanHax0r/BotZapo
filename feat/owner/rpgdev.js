@@ -2,21 +2,11 @@
  * © JamvanHax0r — Fiony Bot
  * Hapus credit gak bikin u jago dumbass. 
  * Hargai sebagaimana u mau dihargai.
- * rpgdev.js — Dev tools Nusantara Wilds.
+ * rpgdev.js — Dev tools Nusantara Wilds (DEFINITIVE v2).
  *
- * Owner-only:
- * - reset player / reset all
- * - give item
- * - set stat
- * - full heal/end rest
- * - add/clear/list quest
- * - list item database
- * - leaderboard
- * - maintenance DB
- * [FIX V2 BELOW]
- *
- * Semua tampilan target di-resolve LID → PN (core/lid.js)
- * dan dirender sebagai mention biru yang bisa diklik.
+ * Zero phantom character. Target mention (LID) di-resolve ke karakter
+ * asli (PN) lewat scan tabel karakter + batch getLidsByPhoneNumbers —
+ * satu-satunya peta PN<->LID yang pasti.
  */
 import {
   createCharacter,
@@ -48,12 +38,8 @@ function numOnly(jid) {
   return jid?.split('@')[0]?.split(':')[0] ?? jid
 }
 
-async function mentionFor(ctx, jid) {
+async function replyMention(ctx, jid, text) {
   const pn = await resolveLidToPn(ctx.client, ctx.chat, jid)
-  return { pn, num: numOnly(pn) }
-}
-
-async function replyMention(ctx, pn, text) {
   const num = numOnly(pn)
   await ctx.client.message.send(ctx.chat, {
     extendedTextMessage: {
@@ -63,22 +49,8 @@ async function replyMention(ctx, pn, text) {
   })
 }
 
-async function numberToBestJid(ctx, number) {
-  const pn = `${number}@s.whatsapp.net`
-
-  if (getCharacter(pn)) return pn
-
-  try {
-    const rows = await ctx.client.profile.getLidsByPhoneNumbers([number])
-    const lid = rows?.[0]?.lidJid
-    if (lid && getCharacter(lid)) return lid
-    if (lid && ctx.isGroup) return lid
-  } catch {}
-
-  return pn
-}
-
-async function parseTarget(ctx, start = 1) {
+/** Parse target: me | @user | 628xxx → { jid, next }. */
+function parseTarget(ctx, start = 1) {
   const token = ctx.args[start]
   const mentioned = ctx.mentioned?.[0]
 
@@ -92,15 +64,52 @@ async function parseTarget(ctx, start = 1) {
 
   const num = normalizeNumber(token ?? '')
   if (num) {
-    return { jid: await numberToBestJid(ctx, num), next: start + 1 }
+    return { jid: `${num}@s.whatsapp.net`, next: start + 1 }
   }
 
   return { jid: ctx.sender, next: start }
 }
 
+/**
+ * Resolve JID mentah ke JID yang benar-benar punya karakter.
+ * LID → PN: scan semua PN di tabel karakter + batch getLidsByPhoneNumbers.
+ * PN → LID: lookup langsung.
+ */
+async function resolveRealJid(ctx, rawJid) {
+  if (getCharacter(rawJid)) return { jid: rawJid, exists: true }
+
+  if (rawJid?.endsWith('@lid')) {
+    try {
+      const pns = getAllCharacters(10000)
+        .map((c) => c.jid)
+        .filter((j) => j?.endsWith('@s.whatsapp.net'))
+      if (pns.length) {
+        const rows = await ctx.client.profile.getLidsByPhoneNumbers(pns.map(numOnly))
+        for (const r of rows ?? []) {
+          const pn = r?.phoneJid ?? r?.queriedJid
+          if (r?.lidJid === rawJid && pn && getCharacter(pn)) {
+            return { jid: pn, exists: true }
+          }
+        }
+      }
+    } catch { /* fallback ke raw */ }
+    return { jid: rawJid, exists: false }
+  }
+
+  if (rawJid?.endsWith('@s.whatsapp.net')) {
+    try {
+      const rows = await ctx.client.profile.getLidsByPhoneNumbers([numOnly(rawJid)])
+      const lid = rows?.[0]?.lidJid
+      if (lid && getCharacter(lid)) return { jid: lid, exists: true }
+    } catch { /* fallback ke raw */ }
+  }
+
+  return { jid: rawJid, exists: false }
+}
+
 function help(prefix) {
   return (
-`╭─🛠️「 *RPG DEV TOOLS* 」🛠️─
+`╭─️「 *RPG DEV TOOLS* 」🛠️─╮
 │
 │ *Player*
 │ ${prefix}rpgdev profile [me/@/628xxx]
@@ -128,18 +137,7 @@ function help(prefix) {
 
 async function profileText(ctx, jid) {
   const s = getCharacterStats(jid)
-  if (!s) return `Karakter ${jid} belum ada.`
-
-  const { pn, num } = await mentionFor(ctx, jid)
-
-  // Nama placeholder Dev-<lid> lama → rapihin kalau sekarang ke-resolve PN
-  if (s.name?.startsWith('Dev-') && pn.endsWith('@s.whatsapp.net')) {
-    const fixed = `Dev-${num}`
-    if (fixed !== s.name) updateCharacter(jid, { name: fixed })
-  }
-
-  const isPlaceholder = s.name?.startsWith('Dev-')
-  const displayName = isPlaceholder ? '{target}' : (s.name ?? '{target}')
+  if (!s) return null
 
   const inv = s.inventory
     .slice(0, 10)
@@ -153,9 +151,9 @@ async function profileText(ctx, jid) {
   const quests = getActiveQuests(jid)
 
   return (
-`╭─「 *RPG PROFILE* 」🧭─╮
+`╭─「 *RPG PROFILE* 」🧭─
 │
-│ 👤 ${displayName}
+│ 👤 ${s.name ?? 'Petualang'}
 │ 🆔 {target}
 │
 │ Level: ${s.level}
@@ -191,16 +189,26 @@ export default {
     }
 
     if (action === 'profile') {
-      const { jid } = await parseTarget(ctx, 1)
-      const { num } = await mentionFor(ctx, jid)
-      createCharacter(jid, `Dev-${num}`)
+      const { jid: rawJid } = parseTarget(ctx, 1)
+      const { jid, exists } = await resolveRealJid(ctx, rawJid)
+      if (!exists) {
+        await replyMention(ctx, rawJid, `😅 {target} belum punya karakter. Suruh .hunt dulu.`)
+        return
+      }
       await replyMention(ctx, jid, await profileText(ctx, jid))
       return
     }
 
     if (action === 'reset') {
-      const { jid } = await parseTarget(ctx, 1)
+      const { jid: rawJid } = parseTarget(ctx, 1)
+      const { jid, exists } = await resolveRealJid(ctx, rawJid)
+      if (!exists) {
+        await replyMention(ctx, rawJid, `😅 {target} belum punya karakter.`)
+        return
+      }
       resetCharacter(jid)
+      if (rawJid !== jid) resetCharacter(rawJid) // bersihin phantom kalau ada
+
       await replyMention(ctx, jid,
 `╭─🧹「 *RESET PLAYER* 」🧹─╮
 │
@@ -236,7 +244,8 @@ export default {
     }
 
     if (action === 'give') {
-      const { jid, next } = await parseTarget(ctx, 1)
+      const { jid: rawJid, next } = parseTarget(ctx, 1)
+      const { jid } = await resolveRealJid(ctx, rawJid)
       const itemId = ctx.args[next]
       const amount = Math.max(1, Number(ctx.args[next + 1] ?? 1) || 1)
 
@@ -251,12 +260,11 @@ export default {
         return
       }
 
-      const { num } = await mentionFor(ctx, jid)
-      createCharacter(jid, `Dev-${num}`)
+      createCharacter(jid, `Dev-${numOnly(jid)}`)
       addItem(jid, itemId, amount)
 
       await replyMention(ctx, jid,
-`╭─🎁「 *GIVE ITEM* 」🎁─╮
+`╭─🎁「 *GIVE ITEM* 」🎁─
 │
 │ Target: {target}
 │ Item: ${TIER_ICON[item.tier]} *${item.name}*
@@ -269,7 +277,8 @@ export default {
     }
 
     if (action === 'stat') {
-      const { jid, next } = await parseTarget(ctx, 1)
+      const { jid: rawJid, next } = parseTarget(ctx, 1)
+      const { jid } = await resolveRealJid(ctx, rawJid)
       const field = ctx.args[next]
       const rawValue = ctx.args.slice(next + 1).join(' ')
 
@@ -283,8 +292,7 @@ export default {
         return
       }
 
-      const { num } = await mentionFor(ctx, jid)
-      createCharacter(jid, `Dev-${num}`)
+      createCharacter(jid, `Dev-${numOnly(jid)}`)
 
       const value = field === 'location' ? rawValue : Number(rawValue)
       if (field !== 'location' && !Number.isFinite(value)) {
@@ -298,9 +306,9 @@ export default {
     }
 
     if (action === 'full') {
-      const { jid } = await parseTarget(ctx, 1)
-      const { num } = await mentionFor(ctx, jid)
-      const char = createCharacter(jid, `Dev-${num}`)
+      const { jid: rawJid } = parseTarget(ctx, 1)
+      const { jid } = await resolveRealJid(ctx, rawJid)
+      const char = createCharacter(jid, `Dev-${numOnly(jid)}`)
 
       updateCharacter(jid, {
         hp: char.max_hp,
@@ -325,7 +333,8 @@ export default {
     }
 
     if (action === 'quest') {
-      const { jid, next } = await parseTarget(ctx, 1)
+      const { jid: rawJid, next } = parseTarget(ctx, 1)
+      const { jid } = await resolveRealJid(ctx, rawJid)
       const type = ctx.args[next]
       const questId = ctx.args[next + 1]
       const target = Number(ctx.args[next + 2])
@@ -337,8 +346,7 @@ export default {
         return
       }
 
-      const { num } = await mentionFor(ctx, jid)
-      createCharacter(jid, `Dev-${num}`)
+      createCharacter(jid, `Dev-${numOnly(jid)}`)
       addQuest(jid, type, questId, target)
 
       await replyMention(ctx, jid,
@@ -355,11 +363,12 @@ export default {
     }
 
     if (action === 'quests') {
-      const { jid } = await parseTarget(ctx, 1)
+      const { jid: rawJid } = parseTarget(ctx, 1)
+      const { jid } = await resolveRealJid(ctx, rawJid)
       const quests = getActiveQuests(jid)
 
       await replyMention(ctx, jid,
-`╭─📜「 *ACTIVE QUESTS* 」📜─
+`╭─「 *ACTIVE QUESTS* 」📜─╮
 │
 │ Target: {target}
 │
@@ -373,7 +382,8 @@ ${quests.length
     }
 
     if (action === 'clearquest') {
-      const { jid } = await parseTarget(ctx, 1)
+      const { jid: rawJid } = parseTarget(ctx, 1)
+      const { jid } = await resolveRealJid(ctx, rawJid)
       clearQuests(jid)
       await replyMention(ctx, jid, `✅ Semua quest RPG untuk {target} dibersihkan.`)
       return

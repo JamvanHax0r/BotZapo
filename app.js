@@ -46,8 +46,10 @@ function setupOwnerMetaHandler(client) {
       const alt = event.key.participantAlt ?? event.key.remoteJidAlt
       const pnJid = primary?.endsWith('@lid') ? (alt ?? primary) : primary
       const senderNumber = (pnJid ?? '').split('@')[0].split(':')[0]
+      const lidJid = primary?.endsWith('@lid') ? primary : alt?.endsWith('@lid') ? alt : undefined
 
-      const staffEntry = getStaffEntry(senderNumber)
+      // [UPDATE] ✅ Cek staff via PN, fallback via LID (owner ber-username)
+      const staffEntry = getStaffEntry(senderNumber, lidJid)
       if (staffEntry?.role !== 'owner') {
         logger.warn(`meta: ditolak — +${senderNumber} bukan owner`)
         return
