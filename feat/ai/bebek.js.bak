@@ -3,18 +3,19 @@
  * Hapus credit gak bikin u jago dumbass.
  * Hargai sebagaimana u mau dihargai.
  * bebek.js — FITUR AI STAND-ALONE penuh via Duck.ai (GPT-5.6 Luna dkk)
+ *
+ * [UPDATE AND FIX BELOW]
  * Quote handling: proven pattern tourl.js (resolveMediaPayload + downloadMediaMessage)
  * VISION FIX: image part di-re-encode ke webp + max 1024px (sesuai pola sourcenya brayy)
  * IMAGE GEN: nangkep b64Image dari stream ui-component GenerateImage, kirim sebagai image WA
  * FIX DIMENSI: baca width/height ASLI dari buffer via sharp (metadata DDG suka mislabel)
- * FINAL TOUCH: MAX_CODE 60000 (limit WA ~65.536 char) — bye bye notif "terpotong"
  */
 
 import { duckAiChat, fetchDuckAiModels, DUCKAI_DEFAULT_MODEL } from '../../src/clients/duckai.js';
 import { tokenize, LANGS } from '../../lib/highlight.js';
 import { downloadMediaMessage, resolveMediaPayload } from 'zapo-js';
 
-const MAX_CODE = 60000; // limit WA ~65.536 char per pesan — code block luwes sampe 60k
+const MAX_CODE = 12000;
 const MAX_TEXT = 3500;
 const MEM = (globalThis.JH_BEBEK_MEM ??= new Map());
 const MODEL_CHOICE = (globalThis.JH_BEBEK_MODEL ??= new Map());
@@ -71,7 +72,7 @@ async function extractImage(ctx) {
   }
 }
 
-// ===== VISION FIX: samain kaya sourcenye langsung (webp + max 1024px) =====
+// ===== [FIX] VISION: samain kaya sourcenye langsung (webp + max 1024px) =====
 async function toImagePart(raw) {
   if (!raw) return null;
   let buf = raw.buf;
@@ -91,7 +92,7 @@ async function toImagePart(raw) {
   return part;
 }
 
-// ===== [UPDATE] FORMATTER: markdown mentah -> format WA yang rapi =====
+// ===== [UPDATE] FORMATTER: markdown mentah -> format WA yang rapih =====
 function cleanMarkdown(t) {
   return String(t)
     .replace(/<citation[^>]*>\s*<\/citation>/gi, '')
@@ -199,7 +200,7 @@ function sendRich(ctx, submessages) {
           contextInfo: {
             forwardingScore: 999,
             isForwarded: true,
-            forwardedAiBotMessageInfo: { botJid: '867051314767696@bot' },
+            forwardedAiBotMessageInfo: { botJid: '236911050403982@bot' },
             forwardOrigin: 4
           }
         }
@@ -263,7 +264,7 @@ export default {
     if (/^pakai\s+(.+)/i.test(query)) {
       const id = query.match(/^pakai\s+(.+)/i)[1].trim();
       MODEL_CHOICE.set(ctx.sender, id);
-      return ctx.reply(`🦆 Oke, model diset ke *${id}* buat sesi lo!`);
+      return ctx.reply(`🦆 Oke, model diset ke *${id}* buat sesi kamu, Kak!`);
     }
 
     if (/^(reset|mulai( ulang)?|lupakan)/i.test(query)) {
@@ -327,7 +328,7 @@ export default {
         messageText: '🦆 *BEBEK AI* — _' + (hasImage ? 'Vision Mode' : 'Chat Mode') + '_\n⚙️ ' + model
       });
 
-      // ===== IMAGE GEN note (dimensi ASLI dari buffer) =====
+      // ===== [FIX] IMAGE GEN note (dimensi ASLI dari buffer) =====
       if (preparedImages.length) {
         const g = preparedImages[0];
         submessages.push({
