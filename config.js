@@ -41,6 +41,10 @@ export default {
     maxVideoSeconds: 10
   },
 
+  wsWorkerUrl: 'wss://audio.jhx.my.id/wss/audio',
+  wsPort: 8090,
+  wsPath: '/wss/audio',
+
   antiSpam: {
     enabled: true,
     max: 5,
